@@ -1,0 +1,51 @@
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #1c060a;
+  border: 1px solid #4a1018;
+  border-radius: 12px;
+  padding: 13px 16px;
+  margin-top: 14px;
+  animation: fadeUp 0.2s ease;
+}
+
+.icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.message {
+  color: #ff7070;
+  font-size: 14px;
+  line-height: 1.5;
+  flex: 1;
+}
+
+.retry {
+  background: rgba(255, 58, 58, 0.12);
+  border: 1px solid rgba(255, 58, 58, 0.3);
+  color: #FF5555;
+  border-radius: 7px;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.retry:hover {
+  background: rgba(255, 58, 58, 0.22);
+}
+
+.retry:focus-visible {
+  outline: 2px solid #FF3A3A;
+  outline-offset: 2px;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

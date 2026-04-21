@@ -1,0 +1,72 @@
+.wrapper {
+  margin-bottom: 18px;
+}
+
+.label {
+  font-size: 10px;
+  color: #333;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 9px;
+  font-family: 'Syne', sans-serif;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #09090f;
+  border: 1.5px solid #161622;
+  border-radius: 12px;
+  padding: 13px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: 'Instrument Sans', sans-serif;
+  transition: border-color 0.14s, background 0.14s;
+}
+
+.option:hover {
+  border-color: #252535;
+}
+
+.option.selected {
+  background: #180610;
+  border-color: #FF3A3A;
+}
+
+.radio {
+  accent-color: #FF3A3A;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.optionLabel {
+  flex: 1;
+  color: #888;
+}
+
+.selected .optionLabel {
+  color: #fff;
+}
+
+.bestBadge {
+  background: rgba(255, 58, 58, 0.12);
+  border: 1px solid rgba(255, 58, 58, 0.3);
+  color: #FF5555;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-family: 'Syne', sans-serif;
+}
