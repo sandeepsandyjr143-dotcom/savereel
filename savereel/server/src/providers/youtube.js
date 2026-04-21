@@ -3,20 +3,50 @@
 const { spawn } = require('child_process');
 const { ProviderError } = require('../utils/errors');
 
+function getPythonCmd() {
+  return process.platform === 'win32' ? 'python' : 'python3';
+}
+
+function baseArgs() {
+  return [
+    '--no-playlist',
+    '--no-warnings',
+    '--extractor-args',
+    'youtube:player_client=android',
+    '--user-agent',
+    'com.google.android.youtube/19.09.37 (Linux; U; Android 11)',
+    '--socket-timeout',
+    '15'
+  ];
+}
+
 function runYtDlp(args = []) {
   return new Promise((resolve, reject) => {
-    const cmd = process.platform === 'win32' ? 'python' : 'python3';
-    const child = spawn(cmd, ['-m', 'yt_dlp', ...args]);
+    const child = spawn(
+      getPythonCmd(),
+      ['-m', 'yt_dlp', ...baseArgs(), ...args],
+      { stdio: ['ignore', 'pipe', 'pipe'] }
+    );
 
     let out = '';
     let err = '';
 
-    child.stdout.on('data', d => out += d.toString());
-    child.stderr.on('data', d => err += d.toString());
+    child.stdout.on('data', d => (out += d.toString()));
+    child.stderr.on('data', d => (err += d.toString()));
+
+    child.on('error', e => {
+      reject(new ProviderError(e.message || 'yt-dlp start failed'));
+    });
 
     child.on('close', code => {
-      if (code === 0) resolve(out);
-      else reject(new ProviderError(err || 'yt-dlp failed'));
+      if (code === 0) return resolve(out);
+
+      reject(
+        new ProviderError(
+          err ||
+            'YouTube blocked request. Try another video or retry in a moment.'
+        )
+      );
     });
   });
 }
@@ -34,10 +64,7 @@ function nearestQuality(height) {
   return best;
 }
 
-async function getInfo(url) {
-  const raw = await runYtDlp(['-J', '--no-playlist', url]);
-  const data = JSON.parse(raw);
-
+function normalizeFormats(data) {
   const used = new Set();
 
   let formats = (data.formats || [])
@@ -70,17 +97,28 @@ async function getInfo(url) {
       best: false
     }));
 
-  formats = [...formats, ...audio];
+  return [...formats, ...audio];
+}
 
-  return {
-    platform: 'youtube',
-    title: data.title || 'YouTube Video',
-    thumbnail: data.thumbnail || '',
-    duration: data.duration || 0,
-    channel: data.uploader || '',
-    views: data.view_count || 0,
-    formats
-  };
+async function getInfo(url) {
+  try {
+    const raw = await runYtDlp(['-J', url]);
+    const data = JSON.parse(raw);
+
+    return {
+      platform: 'youtube',
+      title: data.title || 'YouTube Video',
+      thumbnail: data.thumbnail || '',
+      duration: data.duration || 0,
+      channel: data.uploader || '',
+      views: data.view_count || 0,
+      formats: normalizeFormats(data)
+    };
+  } catch (err) {
+    throw new ProviderError(
+      err.message || 'Unable to fetch YouTube video right now.'
+    );
+  }
 }
 
 async function getFormat(url, itag) {
@@ -89,21 +127,21 @@ async function getFormat(url, itag) {
 }
 
 function createStream(url, format) {
-  const cmd = process.platform === 'win32' ? 'python' : 'python3';
-
-  const child = spawn(cmd, [
-    '-m',
-    'yt_dlp',
-    '--no-part',
-    '--no-playlist',
-    '-f',
-    format.format_id,
-    '-o',
-    '-',
-    url
-  ], {
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
+  const child = spawn(
+    getPythonCmd(),
+    [
+      '-m',
+      'yt_dlp',
+      ...baseArgs(),
+      '--no-part',
+      '-f',
+      format.format_id,
+      '-o',
+      '-',
+      url
+    ],
+    { stdio: ['ignore', 'pipe', 'pipe'] }
+  );
 
   child.stderr.on('data', () => {});
 
