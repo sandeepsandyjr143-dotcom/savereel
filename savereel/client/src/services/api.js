@@ -1,8 +1,9 @@
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = 'https://savereel-api.onrender.com';
 const REQUEST_TIMEOUT_MS = 30000;
 
 export async function fetchVideoInfo(url, platform) {
-  const endpoint = platform === 'youtube' ? '/api/yt/info' : '/api/ig/info';
+  const endpoint =
+    platform === 'youtube' ? '/api/yt/info' : '/api/ig/info';
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -22,7 +23,6 @@ export async function fetchVideoInfo(url, platform) {
     }
 
     return json.data;
-
   } catch (err) {
     clearTimeout(timer);
 
