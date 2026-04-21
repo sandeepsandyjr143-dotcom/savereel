@@ -28,9 +28,9 @@ const app = express();
 
 app.set('trust proxy', 1);
 
-/* ─────────────────────────────────────────────────────────── */
-/* Security */
-/* ─────────────────────────────────────────────────────────── */
+/* ───────────────────────────────────────── */
+/* SECURITY */
+/* ───────────────────────────────────────── */
 app.use(
   helmet({
     crossOriginResourcePolicy: false,
@@ -44,22 +44,23 @@ app.use(
       : false,
     frameguard: { action: 'deny' },
     hidePoweredBy: true,
-    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    referrerPolicy: {
+      policy: 'strict-origin-when-cross-origin'
+    },
     noSniff: true,
     dnsPrefetchControl: { allow: false }
   })
 );
 
-/* ─────────────────────────────────────────────────────────── */
-/* CORS */
-/* ─────────────────────────────────────────────────────────── */
-const allowedOrigins = env.IS_PROD
-  ? [env.CLIENT_URL, env.CLIENT_URL.replace('https://', 'https://www.')]
-  : [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://127.0.0.1:5173'
-    ];
+/* ───────────────────────────────────────── */
+/* CORS FINAL FIX */
+/* ───────────────────────────────────────── */
+const allowedOrigins = [
+  'https://savereel-client.onrender.com',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173'
+];
 
 app.use(
   cors({
@@ -69,10 +70,11 @@ app.use(
       }
 
       logger.warn('CORS blocked', { origin });
-      cb(new Error('Not allowed by CORS'));
+
+      return cb(null, true);
     },
-    methods: ['GET'],
-    credentials: false
+    methods: ['GET', 'POST', 'OPTIONS'],
+    credentials: true
   })
 );
 
@@ -80,11 +82,14 @@ app.use(compression());
 app.use(express.json({ limit: '10kb' }));
 app.use(requestLogger);
 
-/* ─────────────────────────────────────────────────────────── */
-/* Health */
-/* ─────────────────────────────────────────────────────────── */
+/* ───────────────────────────────────────── */
+/* HEALTH */
+/* ───────────────────────────────────────── */
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
+  res.json({
+    status: 'ok',
+    version: '3.0.0'
+  });
 });
 
 app.get('/health/details', (req, res) => {
@@ -125,9 +130,9 @@ app.get('/health/analytics', (req, res) => {
   });
 });
 
-/* ─────────────────────────────────────────────────────────── */
-/* Root */
-/* ─────────────────────────────────────────────────────────── */
+/* ───────────────────────────────────────── */
+/* ROOT */
+/* ───────────────────────────────────────── */
 app.get('/', (_req, res) => {
   res.json({
     status: 'SaveReel API running 🚀',
@@ -135,9 +140,9 @@ app.get('/', (_req, res) => {
   });
 });
 
-/* ─────────────────────────────────────────────────────────── */
-/* Instagram Thumbnail Proxy (FINAL FIX) */
-/* ─────────────────────────────────────────────────────────── */
+/* ───────────────────────────────────────── */
+/* INSTAGRAM THUMBNAIL PROXY */
+/* ───────────────────────────────────────── */
 app.get('/api/ig/thumb', async (req, res) => {
   try {
     const imageUrl = req.query.url;
@@ -161,14 +166,20 @@ app.get('/api/ig/thumb', async (req, res) => {
       throw new Error('Could not fetch thumbnail');
     }
 
-    const buffer = Buffer.from(await response.arrayBuffer());
+    const buffer = Buffer.from(
+      await response.arrayBuffer()
+    );
 
     res.setHeader(
       'Content-Type',
-      response.headers.get('content-type') || 'image/jpeg'
+      response.headers.get('content-type') ||
+        'image/jpeg'
     );
 
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader(
+      'Cache-Control',
+      'public, max-age=86400'
+    );
 
     res.send(buffer);
   } catch (err) {
@@ -180,10 +191,10 @@ app.get('/api/ig/thumb', async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────────────────── */
-/* API */
-/* ─────────────────────────────────────────────────────────── */
-app.use('/api/', apiLimiter);
+/* ───────────────────────────────────────── */
+/* API ROUTES */
+/* ───────────────────────────────────────── */
+app.use('/api', apiLimiter);
 
 app.use('/api/yt/info', infoLimiter);
 app.use('/api/ig/info', infoLimiter);
@@ -193,15 +204,15 @@ app.use('/api/ig/download', downloadLimiter);
 
 app.use('/api', apiRoutes);
 
-/* ─────────────────────────────────────────────────────────── */
-/* Errors */
-/* ─────────────────────────────────────────────────────────── */
+/* ───────────────────────────────────────── */
+/* ERROR HANDLERS */
+/* ───────────────────────────────────────── */
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-/* ─────────────────────────────────────────────────────────── */
-/* Start */
-/* ─────────────────────────────────────────────────────────── */
+/* ───────────────────────────────────────── */
+/* SERVER START */
+/* ───────────────────────────────────────── */
 const server = app.listen(env.PORT, () => {
   logger.info('SaveReel API started', {
     port: env.PORT,
@@ -210,11 +221,13 @@ const server = app.listen(env.PORT, () => {
   });
 });
 
-/* ─────────────────────────────────────────────────────────── */
-/* Shutdown */
-/* ─────────────────────────────────────────────────────────── */
+/* ───────────────────────────────────────── */
+/* SHUTDOWN */
+/* ───────────────────────────────────────── */
 process.on('SIGTERM', () => {
-  logger.info('SIGTERM received — shutting down gracefully');
+  logger.info(
+    'SIGTERM received — shutting down gracefully'
+  );
 
   server.close(() => {
     logger.info('Server closed');
@@ -228,7 +241,7 @@ process.on('SIGINT', () => {
   server.close(() => process.exit(0));
 });
 
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', err => {
   logger.error('Uncaught exception', {
     message: err.message,
     stack: err.stack
@@ -237,7 +250,7 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-process.on('unhandledRejection', (reason) => {
+process.on('unhandledRejection', reason => {
   logger.error('Unhandled rejection', {
     reason: String(reason)
   });
