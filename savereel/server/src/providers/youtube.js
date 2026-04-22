@@ -56,7 +56,7 @@ function runYtDlp(args = []) {
 
       reject(
         new ProviderError(
-          err || 'YouTube blocked request. Try another video or retry in a moment.'
+          err || 'Unable to fetch YouTube video right now.'
         )
       );
     });
@@ -97,19 +97,16 @@ function normalizeFormats(data) {
       best: i === 0
     }));
 
-  const audio = (data.formats || [])
-    .filter(f => f.vcodec === 'none' && f.acodec !== 'none')
-    .slice(0, 1)
-    .map((f, i) => ({
-      itag: String(formats.length + i),
-      format_id: f.format_id,
-      label: 'MP3 - Audio',
-      quality: 'audio',
-      type: 'audio',
-      best: false
-    }));
+  formats.push({
+    itag: String(formats.length),
+    format_id: 'audio',
+    label: 'MP3 - Audio',
+    quality: 'audio',
+    type: 'audio',
+    best: false
+  });
 
-  return [...formats, ...audio];
+  return formats;
 }
 
 async function getInfo(url) {
@@ -141,8 +138,8 @@ async function getFormat(url, itag) {
 function createStream(url, format) {
   const selectedFormat =
     format.type === 'audio'
-      ? 'bestaudio'
-      : `${format.format_id}+bestaudio/best`;
+      ? 'bestaudio/best'
+      : 'bestvideo+bestaudio/best';
 
   const child = spawn(
     getPythonCmd(),
