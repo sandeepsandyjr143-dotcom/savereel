@@ -1,8 +1,17 @@
 'use strict';
 
 const ytProvider = require('../providers/youtube');
-const { validateYouTubeUrl, validateItag } = require('../validators/urlValidator');
-const { asyncWrap, ok, sanitizeFilename } = require('../utils/helpers');
+const {
+  validateYouTubeUrl,
+  validateItag
+} = require('../validators/urlValidator');
+
+const {
+  asyncWrap,
+  ok,
+  sanitizeFilename
+} = require('../utils/helpers');
+
 const analytics = require('../utils/analytics');
 const logger = require('../utils/logger');
 
@@ -10,12 +19,21 @@ const getInfo = asyncWrap(async (req, res) => {
   analytics.inc('visits');
 
   const url = validateYouTubeUrl(req.query.url);
-  logger.info('YT info request', { url, reqId: req.reqId });
 
-  const data = await ytProvider.getInfo(url);
-  analytics.inc('yt_info_ok');
+  logger.info('YT info request', {
+    url,
+    reqId: req.reqId
+  });
 
-  ok(res, { data });
+  try {
+    const data = await ytProvider.getInfo(url);
+
+    analytics.inc('yt_info_ok');
+    return ok(res, { data });
+  } catch (err) {
+    analytics.inc('yt_info_fail');
+    throw err;
+  }
 });
 
 const download = asyncWrap(async (req, res) => {
@@ -24,7 +42,11 @@ const download = asyncWrap(async (req, res) => {
   const title = req.query.title || 'savereel-video';
 
   analytics.inc('yt_download');
-  logger.info('YT download request', { reqId: req.reqId, itag });
+
+  logger.info('YT download request', {
+    reqId: req.reqId,
+    itag
+  });
 
   const info = await ytProvider.getInfo(url);
   const format = info.formats[Number(itag)];
@@ -49,7 +71,10 @@ const download = asyncWrap(async (req, res) => {
   });
 
   stream.on('error', err => {
-    logger.error('YT stream error', { message: err.message });
+    logger.error('YT stream error', {
+      message: err.message
+    });
+
     res.end();
   });
 
