@@ -139,6 +139,11 @@ async function getFormat(url, itag) {
 }
 
 function createStream(url, format) {
+  const selectedFormat =
+    format.type === 'audio'
+      ? 'bestaudio'
+      : `${format.format_id}+bestaudio/best`;
+
   const child = spawn(
     getPythonCmd(),
     [
@@ -147,12 +152,14 @@ function createStream(url, format) {
       ...baseArgs(),
       '--no-part',
       '-f',
-      format.format_id,
+      selectedFormat,
       '-o',
       '-',
       url
     ],
-    { stdio: ['ignore', 'pipe', 'pipe'] }
+    {
+      stdio: ['ignore', 'pipe', 'pipe']
+    }
   );
 
   child.stderr.on('data', () => {});
