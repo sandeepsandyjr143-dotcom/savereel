@@ -12,14 +12,10 @@ const getInfo = asyncWrap(async (req, res) => {
   const url = validateYouTubeUrl(req.query.url);
   logger.info('YT info request', { url, reqId: req.reqId });
 
-  try {
-    const data = await ytProvider.getInfo(url);
-    analytics.inc('yt_info_ok');
-    ok(res, { data });
-  } catch (err) {
-    analytics.inc('yt_info_fail');
-    throw err;
-  }
+  const data = await ytProvider.getInfo(url);
+  analytics.inc('yt_info_ok');
+
+  ok(res, { data });
 });
 
 const download = asyncWrap(async (req, res) => {
@@ -30,9 +26,14 @@ const download = asyncWrap(async (req, res) => {
   analytics.inc('yt_download');
   logger.info('YT download request', { reqId: req.reqId, itag });
 
-  const format = await ytProvider.getFormat(url, itag);
-  const isAudio = format.type === 'audio';
+  const info = await ytProvider.getInfo(url);
+  const format = info.formats[Number(itag)];
 
+  if (!format) {
+    throw new Error('Invalid format selected');
+  }
+
+  const isAudio = format.type === 'audio';
   const ext = isAudio ? 'mp3' : 'mp4';
   const filename = sanitizeFilename(title, ext);
 
@@ -40,19 +41,16 @@ const download = asyncWrap(async (req, res) => {
     'Content-Disposition': `attachment; filename="${filename}"`,
     'Content-Type': isAudio ? 'audio/mpeg' : 'video/mp4',
     'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff',
-    'Connection': 'keep-alive'
+    'X-Content-Type-Options': 'nosniff'
   });
 
-  const stream = ytProvider.createStream(url, format);
+  const stream = ytProvider.createStream(url, {
+    type: isAudio ? 'audio' : 'video'
+  });
 
   stream.on('error', err => {
     logger.error('YT stream error', { message: err.message });
-    if (!res.headersSent) {
-      res.status(500).end('Download failed');
-    } else {
-      res.end();
-    }
+    res.end();
   });
 
   req.on('close', () => {
