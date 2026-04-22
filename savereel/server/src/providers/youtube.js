@@ -1,14 +1,27 @@
 'use strict';
 
 const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const { ProviderError } = require('../utils/errors');
 
 function getPythonCmd() {
   return process.platform === 'win32' ? 'python' : 'python3';
 }
 
+function getCookieArgs() {
+  const cookiePath = path.join(__dirname, '../../cookies.txt');
+
+  if (fs.existsSync(cookiePath)) {
+    return ['--cookies', cookiePath];
+  }
+
+  return [];
+}
+
 function baseArgs() {
   return [
+    ...getCookieArgs(),
     '--no-playlist',
     '--no-warnings',
     '--extractor-args',
@@ -43,8 +56,7 @@ function runYtDlp(args = []) {
 
       reject(
         new ProviderError(
-          err ||
-            'YouTube blocked request. Try another video or retry in a moment.'
+          err || 'YouTube blocked request. Try another video or retry in a moment.'
         )
       );
     });
