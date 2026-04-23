@@ -28,9 +28,7 @@ const app = express();
 
 app.set('trust proxy', 1);
 
-/* ───────────────────────────────────────── */
-/* SECURITY                                  */
-/* ───────────────────────────────────────── */
+/* SECURITY */
 app.use(
   helmet({
     crossOriginResourcePolicy: false,
@@ -44,17 +42,13 @@ app.use(
       : false,
     frameguard: { action: 'deny' },
     hidePoweredBy: true,
-    referrerPolicy: {
-      policy: 'strict-origin-when-cross-origin'
-    },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
     noSniff: true,
     dnsPrefetchControl: { allow: false }
   })
 );
 
-/* ───────────────────────────────────────── */
-/* CORS                                      */
-/* ───────────────────────────────────────── */
+/* CORS */
 const allowedOrigins = [
   'https://savereel-client.onrender.com',
   'http://localhost:5173',
@@ -68,10 +62,11 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) {
         return cb(null, true);
       }
+
       logger.warn('CORS blocked', { origin });
       return cb(null, true);
     },
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'OPTIONS', 'HEAD'],
     credentials: true
   })
 );
@@ -80,9 +75,11 @@ app.use(compression());
 app.use(express.json({ limit: '10kb' }));
 app.use(requestLogger);
 
-/* ───────────────────────────────────────── */
-/* HEALTH                                    */
-/* ───────────────────────────────────────── */
+/* HEALTH */
+app.head('/health', (_req, res) => {
+  res.sendStatus(200);
+});
+
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
@@ -128,9 +125,11 @@ app.get('/health/analytics', (req, res) => {
   });
 });
 
-/* ───────────────────────────────────────── */
-/* ROOT                                      */
-/* ───────────────────────────────────────── */
+/* ROOT */
+app.head('/', (_req, res) => {
+  res.sendStatus(200);
+});
+
 app.get('/', (_req, res) => {
   res.json({
     status: 'SaveReel API running 🚀',
@@ -138,11 +137,7 @@ app.get('/', (_req, res) => {
   });
 });
 
-/* ───────────────────────────────────────── */
-/* API ROUTES                                */
-/* NOTE: Thumbnail proxy lives in api.js     */
-/* DO NOT add /api/ig/thumb here again       */
-/* ───────────────────────────────────────── */
+/* API */
 app.use('/api', apiLimiter);
 app.use('/api/yt/info', infoLimiter);
 app.use('/api/ig/info', infoLimiter);
@@ -150,28 +145,25 @@ app.use('/api/yt/download', downloadLimiter);
 app.use('/api/ig/download', downloadLimiter);
 app.use('/api', apiRoutes);
 
-/* ───────────────────────────────────────── */
-/* ERROR HANDLERS                            */
-/* ───────────────────────────────────────── */
+/* ERRORS */
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-/* ───────────────────────────────────────── */
-/* SERVER START                              */
-/* ───────────────────────────────────────── */
-const server = app.listen(env.PORT, () => {
+/* START */
+const PORT = process.env.PORT || env.PORT || 3001;
+
+const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info('SaveReel API started', {
-    port: env.PORT,
+    port: PORT,
     env: env.NODE_ENV,
     version: '3.0.0'
   });
 });
 
-/* ───────────────────────────────────────── */
-/* GRACEFUL SHUTDOWN                         */
-/* ───────────────────────────────────────── */
+/* SHUTDOWN */
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received — shutting down gracefully');
+
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);
@@ -180,6 +172,7 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   logger.info('SIGINT received — shutting down');
+
   server.close(() => process.exit(0));
 });
 
@@ -188,6 +181,7 @@ process.on('uncaughtException', err => {
     message: err.message,
     stack: err.stack
   });
+
   process.exit(1);
 });
 
