@@ -5,41 +5,28 @@ const fs = require('fs');
 const path = require('path');
 const { ProviderError } = require('../utils/errors');
 
-function getPythonCmd() {
+function py() {
   return process.platform === 'win32' ? 'python' : 'python3';
 }
 
-function getCookieArgs() {
-  const cookiePath = path.join(__dirname, '../../cookies.txt');
-
-  if (fs.existsSync(cookiePath)) {
-    return ['--cookies', cookiePath];
-  }
-
-  return [];
+function cookieArgs() {
+  const file = path.join(__dirname, '../../cookies.txt');
+  return fs.existsSync(file) ? ['--cookies', file] : [];
 }
 
-function baseArgs() {
+function commonArgs() {
   return [
-    ...getCookieArgs(),
+    ...cookieArgs(),
     '--no-playlist',
     '--no-warnings',
     '--extractor-args',
-    'youtube:player_client=android',
-    '--user-agent',
-    'com.google.android.youtube/19.09.37 (Linux; U; Android 11)',
-    '--socket-timeout',
-    '15'
+    'youtube:player_client=android'
   ];
 }
 
-function runYtDlp(args = []) {
+function run(args = []) {
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      getPythonCmd(),
-      ['-m', 'yt_dlp', ...baseArgs(), ...args],
-      { stdio: ['ignore', 'pipe', 'pipe'] }
-    );
+    const child = spawn(py(), ['-m', 'yt_dlp', ...commonArgs(), ...args]);
 
     let out = '';
     let err = '';
@@ -47,87 +34,41 @@ function runYtDlp(args = []) {
     child.stdout.on('data', d => (out += d.toString()));
     child.stderr.on('data', d => (err += d.toString()));
 
-    child.on('error', e => {
-      reject(new ProviderError(e.message || 'yt-dlp start failed'));
-    });
-
     child.on('close', code => {
       if (code === 0) return resolve(out);
-
-      reject(
-        new ProviderError(
-          err || 'Unable to fetch YouTube video right now.'
-        )
-      );
+      reject(new ProviderError(err || 'yt-dlp failed'));
     });
   });
-}
-
-function nearestQuality(height) {
-  const levels = [144, 240, 360, 480, 720, 1080, 1440, 2160];
-  let best = levels[0];
-
-  for (const q of levels) {
-    if (Math.abs(q - height) < Math.abs(best - height)) {
-      best = q;
-    }
-  }
-
-  return best;
-}
-
-function normalizeFormats(data) {
-  const used = new Set();
-
-  let formats = (data.formats || [])
-    .filter(f => f.height && f.vcodec !== 'none')
-    .map(f => ({ ...f, cleanHeight: nearestQuality(f.height) }))
-    .filter(f => {
-      if (used.has(f.cleanHeight)) return false;
-      used.add(f.cleanHeight);
-      return true;
-    })
-    .sort((a, b) => b.cleanHeight - a.cleanHeight)
-    .map((f, i) => ({
-      itag: String(i),
-      format_id: f.format_id,
-      label: `MP4 - ${f.cleanHeight}p`,
-      quality: `${f.cleanHeight}p`,
-      type: 'video',
-      best: i === 0
-    }));
-
-  formats.push({
-    itag: String(formats.length),
-    format_id: 'audio',
-    label: 'MP3 - Audio',
-    quality: 'audio',
-    type: 'audio',
-    best: false
-  });
-
-  return formats;
 }
 
 async function getInfo(url) {
-  try {
-    const raw = await runYtDlp(['-J', url]);
-    const data = JSON.parse(raw);
+  const raw = await run(['-J', url]);
+  const data = JSON.parse(raw);
 
-    return {
-      platform: 'youtube',
-      title: data.title || 'YouTube Video',
-      thumbnail: data.thumbnail || '',
-      duration: data.duration || 0,
-      channel: data.uploader || '',
-      views: data.view_count || 0,
-      formats: normalizeFormats(data)
-    };
-  } catch (err) {
-    throw new ProviderError(
-      err.message || 'Unable to fetch YouTube video right now.'
-    );
-  }
+  return {
+    platform: 'youtube',
+    title: data.title || 'YouTube Video',
+    thumbnail: data.thumbnail || '',
+    duration: data.duration || 0,
+    channel: data.uploader || '',
+    views: data.view_count || 0,
+    formats: [
+      {
+        itag: '0',
+        label: 'MP4 - Best Quality',
+        quality: 'best',
+        type: 'video',
+        best: true
+      },
+      {
+        itag: '1',
+        label: 'MP3 - Audio',
+        quality: 'audio',
+        type: 'audio',
+        best: false
+      }
+    ]
+  };
 }
 
 async function getFormat(url, itag) {
@@ -136,31 +77,28 @@ async function getFormat(url, itag) {
 }
 
 function createStream(url, format) {
-  const selectedFormat =
+  const fmt =
     format.type === 'audio'
       ? 'bestaudio/best'
-      : 'bestvideo+bestaudio/best';
+      : 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best';
 
   const child = spawn(
-    getPythonCmd(),
+    py(),
     [
       '-m',
       'yt_dlp',
-      ...baseArgs(),
+      ...commonArgs(),
       '--no-part',
       '-f',
-      selectedFormat,
+      fmt,
       '-o',
       '-',
       url
     ],
-    {
-      stdio: ['ignore', 'pipe', 'pipe']
-    }
+    { stdio: ['ignore', 'pipe', 'pipe'] }
   );
 
   child.stderr.on('data', () => {});
-
   return child.stdout;
 }
 
