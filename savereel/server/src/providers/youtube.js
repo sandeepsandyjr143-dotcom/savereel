@@ -5,39 +5,80 @@ const fs = require('fs');
 const path = require('path');
 const { ProviderError } = require('../utils/errors');
 
-function py() {
-  return process.platform === 'win32' ? 'python' : 'python3';
-}
+/* ─────────────────────────────────────────────
+   HELPERS
+───────────────────────────────────────────── */
 
 function cookieArgs() {
   const file = path.join(__dirname, '../../cookies.txt');
   return fs.existsSync(file) ? ['--cookies', file] : [];
 }
 
+// THE CORE FIX: android client skips n-challenge entirely
+// web fallback handles anything android misses
+function baseArgs() {
+  return [
+    '--extractor-args', 'youtube:player_client=android,web',
+    '--no-check-certificates',
+    '--no-warnings',
+    '--socket-timeout', '30',
+    '--no-playlist',
+  ];
+}
+
 function run(args = []) {
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      py(),
-      ['-m', 'yt_dlp', ...cookieArgs(), ...args],
-      { stdio: ['ignore', 'pipe', 'pipe'] }
-    );
+    const allArgs = [
+      ...baseArgs(),
+      ...cookieArgs(),
+      ...args
+    ];
+
+    const child = spawn('yt-dlp', allArgs, {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
 
     let out = '';
     let err = '';
+
+    // Kill if it hangs beyond 60 seconds
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new ProviderError('yt-dlp timed out (60s)'));
+    }, 60000);
 
     child.stdout.on('data', d => (out += d.toString()));
     child.stderr.on('data', d => (err += d.toString()));
 
     child.on('close', code => {
+      clearTimeout(timer);
       if (code === 0) return resolve(out);
-      reject(new ProviderError(err || 'yt-dlp failed'));
+
+      // Extract most meaningful error line from stderr
+      const meaningful = err
+        .split('\n')
+        .filter(l => l.includes('ERROR:'))
+        .pop()
+        || err.slice(-400)
+        || 'yt-dlp exited with code ' + code;
+
+      reject(new ProviderError(meaningful.trim()));
+    });
+
+    child.on('error', spawnErr => {
+      clearTimeout(timer);
+      reject(new ProviderError('Could not start yt-dlp: ' + spawnErr.message));
     });
   });
 }
 
+/* ─────────────────────────────────────────────
+   getInfo — fetches metadata only (no download)
+───────────────────────────────────────────── */
+
 async function getInfo(url) {
   try {
-    const raw = await run(['-J', '--no-playlist', url]);
+    const raw = await run(['-J', url]);
     const data = JSON.parse(raw);
 
     return {
@@ -57,7 +98,7 @@ async function getInfo(url) {
         },
         {
           itag: '1',
-          label: 'MP3 - Audio',
+          label: 'MP3 - Audio Only',
           quality: 'audio',
           type: 'audio',
           best: false
@@ -65,44 +106,57 @@ async function getInfo(url) {
       ]
     };
   } catch (err) {
-    throw new ProviderError(err.message || 'Unable to fetch YouTube video');
+    throw new ProviderError(err.message || 'Failed to fetch YouTube info');
   }
 }
 
-async function getFormat(url, itag) {
-  const info = await getInfo(url);
-  return info.formats[Number(itag)];
-}
+/* ─────────────────────────────────────────────
+   createStream — pipes video/audio to response
+   
+   IMPORTANT: We use combined format strings ONLY.
+   "bestvideo+bestaudio" requires ffmpeg muxing
+   which CANNOT stream to stdout (-o -).
+   Use "best[ext=mp4]" which is a single combined
+   stream — no ffmpeg needed, works on Render.
+───────────────────────────────────────────── */
 
 function createStream(url, format) {
-  const fmt =
-    format.type === 'audio'
-      ? 'bestaudio/best'
-      : 'best[ext=mp4]/best';
+  const isAudio = format.type === 'audio';
 
-  const child = spawn(
-    py(),
-    [
-      '-m',
-      'yt_dlp',
-      ...cookieArgs(),
-      '--no-playlist',
-      '--no-part',
-      '-f',
-      fmt,
-      '-o',
-      '-',
-      url
-    ],
-    { stdio: ['ignore', 'pipe', 'pipe'] }
-  );
+  const fmt = isAudio
+    ? 'bestaudio[ext=m4a]/bestaudio/best'
+    : 'best[ext=mp4]/best';
 
-  child.stderr.on('data', () => {});
+  const args = [
+    ...baseArgs(),
+    ...cookieArgs(),
+    '--no-part',
+    '-f', fmt,
+    '-o', '-',   // stream to stdout
+    url
+  ];
+
+  const child = spawn('yt-dlp', args, {
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+
+  child.stderr.on('data', d => {
+    const line = d.toString().trim();
+    if (line.includes('ERROR')) {
+      console.error('[YT stream error]', line);
+    }
+  });
+
+  child.on('error', err => {
+    console.error('[YT spawn error]', err.message);
+  });
+
+  // If stream closes, clean up child process
+  child.stdout.on('close', () => {
+    try { child.kill(); } catch (_) {}
+  });
+
   return child.stdout;
 }
 
-module.exports = {
-  getInfo,
-  getFormat,
-  createStream
-};
+module.exports = { getInfo, createStream };

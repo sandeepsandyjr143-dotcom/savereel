@@ -29,7 +29,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 /* ───────────────────────────────────────── */
-/* SECURITY */
+/* SECURITY                                  */
 /* ───────────────────────────────────────── */
 app.use(
   helmet({
@@ -53,7 +53,7 @@ app.use(
 );
 
 /* ───────────────────────────────────────── */
-/* CORS FINAL FIX */
+/* CORS                                      */
 /* ───────────────────────────────────────── */
 const allowedOrigins = [
   'https://savereel-client.onrender.com',
@@ -68,9 +68,7 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) {
         return cb(null, true);
       }
-
       logger.warn('CORS blocked', { origin });
-
       return cb(null, true);
     },
     methods: ['GET', 'POST', 'OPTIONS'],
@@ -83,7 +81,7 @@ app.use(express.json({ limit: '10kb' }));
 app.use(requestLogger);
 
 /* ───────────────────────────────────────── */
-/* HEALTH */
+/* HEALTH                                    */
 /* ───────────────────────────────────────── */
 app.get('/health', (_req, res) => {
   res.json({
@@ -131,7 +129,7 @@ app.get('/health/analytics', (req, res) => {
 });
 
 /* ───────────────────────────────────────── */
-/* ROOT */
+/* ROOT                                      */
 /* ───────────────────────────────────────── */
 app.get('/', (_req, res) => {
   res.json({
@@ -141,77 +139,25 @@ app.get('/', (_req, res) => {
 });
 
 /* ───────────────────────────────────────── */
-/* INSTAGRAM THUMBNAIL PROXY */
-/* ───────────────────────────────────────── */
-app.get('/api/ig/thumb', async (req, res) => {
-  try {
-    const imageUrl = req.query.url;
-
-    if (!imageUrl) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing image url'
-      });
-    }
-
-    const response = await fetch(imageUrl, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36',
-        Referer: 'https://www.instagram.com/'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error('Could not fetch thumbnail');
-    }
-
-    const buffer = Buffer.from(
-      await response.arrayBuffer()
-    );
-
-    res.setHeader(
-      'Content-Type',
-      response.headers.get('content-type') ||
-        'image/jpeg'
-    );
-
-    res.setHeader(
-      'Cache-Control',
-      'public, max-age=86400'
-    );
-
-    res.send(buffer);
-  } catch (err) {
-    logger.warn('Thumbnail proxy failed', {
-      message: err.message
-    });
-
-    res.status(404).send('No image');
-  }
-});
-
-/* ───────────────────────────────────────── */
-/* API ROUTES */
+/* API ROUTES                                */
+/* NOTE: Thumbnail proxy lives in api.js     */
+/* DO NOT add /api/ig/thumb here again       */
 /* ───────────────────────────────────────── */
 app.use('/api', apiLimiter);
-
 app.use('/api/yt/info', infoLimiter);
 app.use('/api/ig/info', infoLimiter);
-
 app.use('/api/yt/download', downloadLimiter);
 app.use('/api/ig/download', downloadLimiter);
-
 app.use('/api', apiRoutes);
 
 /* ───────────────────────────────────────── */
-/* ERROR HANDLERS */
+/* ERROR HANDLERS                            */
 /* ───────────────────────────────────────── */
 app.use(notFoundHandler);
 app.use(errorHandler);
 
 /* ───────────────────────────────────────── */
-/* SERVER START */
+/* SERVER START                              */
 /* ───────────────────────────────────────── */
 const server = app.listen(env.PORT, () => {
   logger.info('SaveReel API started', {
@@ -222,13 +168,10 @@ const server = app.listen(env.PORT, () => {
 });
 
 /* ───────────────────────────────────────── */
-/* SHUTDOWN */
+/* GRACEFUL SHUTDOWN                         */
 /* ───────────────────────────────────────── */
 process.on('SIGTERM', () => {
-  logger.info(
-    'SIGTERM received — shutting down gracefully'
-  );
-
+  logger.info('SIGTERM received — shutting down gracefully');
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);
@@ -237,7 +180,6 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   logger.info('SIGINT received — shutting down');
-
   server.close(() => process.exit(0));
 });
 
@@ -246,7 +188,6 @@ process.on('uncaughtException', err => {
     message: err.message,
     stack: err.stack
   });
-
   process.exit(1);
 });
 
