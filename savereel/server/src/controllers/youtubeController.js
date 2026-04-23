@@ -1,7 +1,7 @@
 'use strict';
 
 const ytProvider = require('../providers/youtube');
-const { validateYouTubeUrl, validateItag } = require('../validators/urlValidator');
+const { validateYouTubeUrl } = require('../validators/urlValidator');
 const { asyncWrap, ok, sanitizeFilename } = require('../utils/helpers');
 const analytics = require('../utils/analytics');
 const logger = require('../utils/logger');
@@ -9,7 +9,6 @@ const logger = require('../utils/logger');
 /* ─────────────────────────────────────────────
    GET INFO
 ───────────────────────────────────────────── */
-
 const getInfo = asyncWrap(async (req, res) => {
   analytics.inc('visits');
 
@@ -28,25 +27,39 @@ const getInfo = asyncWrap(async (req, res) => {
 
 /* ─────────────────────────────────────────────
    DOWNLOAD
+   
+   itag = '0' through '6' matching QUALITY_MAP
+   We look up the format object by itag string
+   and pass the full format object to createStream
 ───────────────────────────────────────────── */
-
 const download = asyncWrap(async (req, res) => {
-  const url    = validateYouTubeUrl(req.query.url);
-  const itag   = validateItag(req.query.itag);
-  const title  = req.query.title || 'savereel-video';
+  const url   = validateYouTubeUrl(req.query.url);
+  const itag  = req.query.itag;
+  const title = req.query.title || 'savereel-video';
+
+  if (!itag) {
+    throw new Error('Missing itag parameter');
+  }
 
   analytics.inc('yt_download');
   logger.info('YT download request', { reqId: req.reqId, itag });
 
-  // Validate itag is 0 or 1
-  const itagNum = Number(itag);
-  if (itagNum !== 0 && itagNum !== 1) {
-    throw new Error('Invalid itag. Must be 0 (video) or 1 (audio)');
+  // Look up format from QUALITY_MAP by itag
+  const { QUALITY_MAP } = require('../providers/youtube');
+  const format = QUALITY_MAP.find(f => f.itag === itag);
+
+  if (!format) {
+    throw new Error(`Invalid itag: ${itag}. Valid values are 0-6`);
   }
 
-  const isAudio = itagNum === 1;
+  const isAudio = format.type === 'audio';
   const ext = isAudio ? 'mp3' : 'mp4';
   const filename = sanitizeFilename(title, ext);
+
+  logger.info('YT download format selected', {
+    label: format.label,
+    type: format.type
+  });
 
   res.writeHead(200, {
     'Content-Disposition': `attachment; filename="${filename}"`,
@@ -56,12 +69,10 @@ const download = asyncWrap(async (req, res) => {
     'Transfer-Encoding': 'chunked'
   });
 
-  const format = { type: isAudio ? 'audio' : 'video' };
   const stream = ytProvider.createStream(url, format);
 
   stream.on('error', err => {
     logger.error('YT stream error', { message: err.message });
-    // Headers already sent, just end
     res.end();
   });
 

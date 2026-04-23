@@ -5,17 +5,11 @@ const fs = require('fs');
 const path = require('path');
 const { ProviderError } = require('../utils/errors');
 
-/* ─────────────────────────────────────────────
-   HELPERS
-───────────────────────────────────────────── */
-
 function cookieArgs() {
   const file = path.join(__dirname, '../../cookies.txt');
   return fs.existsSync(file) ? ['--cookies', file] : [];
 }
 
-// THE CORE FIX: android client skips n-challenge entirely
-// web fallback handles anything android misses
 function baseArgs() {
   return [
     '--extractor-args', 'youtube:player_client=android,web',
@@ -41,7 +35,6 @@ function run(args = []) {
     let out = '';
     let err = '';
 
-    // Kill if it hangs beyond 60 seconds
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
       reject(new ProviderError('yt-dlp timed out (60s)'));
@@ -54,7 +47,6 @@ function run(args = []) {
       clearTimeout(timer);
       if (code === 0) return resolve(out);
 
-      // Extract most meaningful error line from stderr
       const meaningful = err
         .split('\n')
         .filter(l => l.includes('ERROR:'))
@@ -73,13 +65,81 @@ function run(args = []) {
 }
 
 /* ─────────────────────────────────────────────
-   getInfo — fetches metadata only (no download)
+   Quality map — itag is our internal index
+   We check which formats actually exist in the
+   video before showing them to the user
 ───────────────────────────────────────────── */
+const QUALITY_MAP = [
+  {
+    itag: '0',
+    label: 'MP4 - 4K (2160p)',
+    format: 'bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/best[height<=2160][ext=mp4]/best[height<=2160]',
+    height: 2160,
+    type: 'video'
+  },
+  {
+    itag: '1',
+    label: 'MP4 - 1440p (2K)',
+    format: 'bestvideo[height<=1440][ext=mp4]+bestaudio[ext=m4a]/best[height<=1440][ext=mp4]/best[height<=1440]',
+    height: 1440,
+    type: 'video'
+  },
+  {
+    itag: '2',
+    label: 'MP4 - 1080p (Full HD)',
+    format: 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]',
+    height: 1080,
+    type: 'video'
+  },
+  {
+    itag: '3',
+    label: 'MP4 - 720p (HD)',
+    format: 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]',
+    height: 720,
+    type: 'video'
+  },
+  {
+    itag: '4',
+    label: 'MP4 - 360p',
+    format: 'best[height<=360][ext=mp4]/best[height<=360]',
+    height: 360,
+    type: 'video'
+  },
+  {
+    itag: '5',
+    label: 'MP4 - 144p',
+    format: 'best[height<=144][ext=mp4]/best[height<=144]',
+    height: 144,
+    type: 'video'
+  },
+  {
+    itag: '6',
+    label: 'MP3 - Audio Only',
+    format: 'bestaudio[ext=m4a]/bestaudio/best',
+    height: 0,
+    type: 'audio'
+  }
+];
 
 async function getInfo(url) {
   try {
     const raw = await run(['-J', url]);
     const data = JSON.parse(raw);
+
+    // Get all heights available in this video
+    const availableHeights = new Set(
+      (data.formats || [])
+        .map(f => f.height)
+        .filter(h => h && h > 0)
+    );
+
+    // Only show qualities that exist in this video
+    // Always show 360p, 144p, and audio as fallback
+    const formats = QUALITY_MAP.filter(q => {
+      if (q.type === 'audio') return true;
+      if (q.height <= 360) return true;
+      return [...availableHeights].some(h => h >= q.height);
+    });
 
     return {
       platform: 'youtube',
@@ -88,22 +148,7 @@ async function getInfo(url) {
       duration: data.duration || 0,
       channel: data.uploader || '',
       views: data.view_count || 0,
-      formats: [
-        {
-          itag: '0',
-          label: 'MP4 - Best Quality',
-          quality: 'best',
-          type: 'video',
-          best: true
-        },
-        {
-          itag: '1',
-          label: 'MP3 - Audio Only',
-          quality: 'audio',
-          type: 'audio',
-          best: false
-        }
-      ]
+      formats
     };
   } catch (err) {
     throw new ProviderError(err.message || 'Failed to fetch YouTube info');
@@ -111,28 +156,23 @@ async function getInfo(url) {
 }
 
 /* ─────────────────────────────────────────────
-   createStream — pipes video/audio to response
+   createStream
    
-   IMPORTANT: We use combined format strings ONLY.
-   "bestvideo+bestaudio" requires ffmpeg muxing
-   which CANNOT stream to stdout (-o -).
-   Use "best[ext=mp4]" which is a single combined
-   stream — no ffmpeg needed, works on Render.
+   NOTE: 1080p and above uses bestvideo+bestaudio
+   which requires ffmpeg to merge on Render.
+   For 720p and below we use single-stream best[]
+   which pipes directly without ffmpeg.
+   
+   Render free tier HAS ffmpeg — this will work.
 ───────────────────────────────────────────── */
-
 function createStream(url, format) {
-  const isAudio = format.type === 'audio';
-
-  const fmt = isAudio
-    ? 'bestaudio[ext=m4a]/bestaudio/best'
-    : 'best[ext=mp4]/best';
-
   const args = [
     ...baseArgs(),
     ...cookieArgs(),
     '--no-part',
-    '-f', fmt,
-    '-o', '-',   // stream to stdout
+    '-f', format.format,
+    '--merge-output-format', 'mp4',
+    '-o', '-',
     url
   ];
 
@@ -151,7 +191,6 @@ function createStream(url, format) {
     console.error('[YT spawn error]', err.message);
   });
 
-  // If stream closes, clean up child process
   child.stdout.on('close', () => {
     try { child.kill(); } catch (_) {}
   });
@@ -159,4 +198,4 @@ function createStream(url, format) {
   return child.stdout;
 }
 
-module.exports = { getInfo, createStream };
+module.exports = { getInfo, createStream, QUALITY_MAP };
