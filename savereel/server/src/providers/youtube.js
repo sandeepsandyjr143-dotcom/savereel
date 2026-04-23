@@ -12,12 +12,13 @@ function cookieArgs() {
 
 function baseArgs() {
   return [
-    '--extractor-args', 'youtube:player_client=android',
+    '--extractor-args', 'youtube:player_client=android_vr,android,tv_embedded',
     '--no-check-certificates',
     '--no-check-formats',
     '--no-warnings',
     '--socket-timeout', '30',
     '--no-playlist',
+    '--user-agent', 'Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36',
   ];
 }
 
@@ -69,49 +70,49 @@ const QUALITY_MAP = [
   {
     itag: '0',
     label: 'MP4 - 4K (2160p)',
-    format: 'bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/best[height<=2160][ext=mp4]/best[height<=2160]',
+    format: 'bestvideo[height<=2160]+bestaudio/best[height<=2160]/best',
     height: 2160,
     type: 'video'
   },
   {
     itag: '1',
     label: 'MP4 - 1440p (2K)',
-    format: 'bestvideo[height<=1440][ext=mp4]+bestaudio[ext=m4a]/best[height<=1440][ext=mp4]/best[height<=1440]',
+    format: 'bestvideo[height<=1440]+bestaudio/best[height<=1440]/best',
     height: 1440,
     type: 'video'
   },
   {
     itag: '2',
     label: 'MP4 - 1080p (Full HD)',
-    format: 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]',
+    format: 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
     height: 1080,
     type: 'video'
   },
   {
     itag: '3',
     label: 'MP4 - 720p (HD)',
-    format: 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]',
+    format: 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
     height: 720,
     type: 'video'
   },
   {
     itag: '4',
     label: 'MP4 - 360p',
-    format: 'best[height<=360][ext=mp4]/best[height<=360]',
+    format: 'best[height<=360]/best',
     height: 360,
     type: 'video'
   },
   {
     itag: '5',
     label: 'MP4 - 144p',
-    format: 'best[height<=144][ext=mp4]/best[height<=144]',
+    format: 'best[height<=144]/best',
     height: 144,
     type: 'video'
   },
   {
     itag: '6',
     label: 'MP3 - Audio Only',
-    format: 'bestaudio[ext=m4a]/bestaudio/best',
+    format: 'bestaudio/best',
     height: 0,
     type: 'audio'
   }
