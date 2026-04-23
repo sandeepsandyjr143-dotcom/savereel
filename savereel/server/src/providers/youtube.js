@@ -26,7 +26,11 @@ function commonArgs() {
 
 function run(args = []) {
   return new Promise((resolve, reject) => {
-    const child = spawn(py(), ['-m', 'yt_dlp', ...commonArgs(), ...args]);
+    const child = spawn(
+      py(),
+      ['-m', 'yt_dlp', ...commonArgs(), ...args],
+      { stdio: ['ignore', 'pipe', 'pipe'] }
+    );
 
     let out = '';
     let err = '';
@@ -42,33 +46,39 @@ function run(args = []) {
 }
 
 async function getInfo(url) {
-  const raw = await run(['-J', url]);
-  const data = JSON.parse(raw);
+  try {
+    const raw = await run(['-J', url]);
+    const data = JSON.parse(raw);
 
-  return {
-    platform: 'youtube',
-    title: data.title || 'YouTube Video',
-    thumbnail: data.thumbnail || '',
-    duration: data.duration || 0,
-    channel: data.uploader || '',
-    views: data.view_count || 0,
-    formats: [
-      {
-        itag: '0',
-        label: 'MP4 - Best Quality',
-        quality: 'best',
-        type: 'video',
-        best: true
-      },
-      {
-        itag: '1',
-        label: 'MP3 - Audio',
-        quality: 'audio',
-        type: 'audio',
-        best: false
-      }
-    ]
-  };
+    return {
+      platform: 'youtube',
+      title: data.title || 'YouTube Video',
+      thumbnail: data.thumbnail || '',
+      duration: data.duration || 0,
+      channel: data.uploader || '',
+      views: data.view_count || 0,
+      formats: [
+        {
+          itag: '0',
+          label: 'MP4 - Best Quality',
+          quality: 'best',
+          type: 'video',
+          best: true
+        },
+        {
+          itag: '1',
+          label: 'MP3 - Audio',
+          quality: 'audio',
+          type: 'audio',
+          best: false
+        }
+      ]
+    };
+  } catch (err) {
+    throw new ProviderError(
+      err.message || 'Unable to fetch YouTube video right now.'
+    );
+  }
 }
 
 async function getFormat(url, itag) {
