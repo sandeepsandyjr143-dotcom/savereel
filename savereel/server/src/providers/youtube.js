@@ -14,21 +14,11 @@ function cookieArgs() {
   return fs.existsSync(file) ? ['--cookies', file] : [];
 }
 
-function commonArgs() {
-  return [
-    ...cookieArgs(),
-    '--no-playlist',
-    '--no-warnings',
-    '--extractor-args',
-    'youtube:player_client=android'
-  ];
-}
-
 function run(args = []) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       py(),
-      ['-m', 'yt_dlp', ...commonArgs(), ...args],
+      ['-m', 'yt_dlp', ...cookieArgs(), ...args],
       { stdio: ['ignore', 'pipe', 'pipe'] }
     );
 
@@ -47,7 +37,7 @@ function run(args = []) {
 
 async function getInfo(url) {
   try {
-    const raw = await run(['-J', url]);
+    const raw = await run(['-J', '--no-playlist', url]);
     const data = JSON.parse(raw);
 
     return {
@@ -75,9 +65,7 @@ async function getInfo(url) {
       ]
     };
   } catch (err) {
-    throw new ProviderError(
-      err.message || 'Unable to fetch YouTube video right now.'
-    );
+    throw new ProviderError(err.message || 'Unable to fetch YouTube video');
   }
 }
 
@@ -90,14 +78,15 @@ function createStream(url, format) {
   const fmt =
     format.type === 'audio'
       ? 'bestaudio/best'
-      : 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best';
+      : 'best[ext=mp4]/best';
 
   const child = spawn(
     py(),
     [
       '-m',
       'yt_dlp',
-      ...commonArgs(),
+      ...cookieArgs(),
+      '--no-playlist',
       '--no-part',
       '-f',
       fmt,
