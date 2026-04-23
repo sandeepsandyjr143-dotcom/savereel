@@ -14,8 +14,13 @@ function baseArgs() {
   return [
     '--no-playlist',
     '--no-warnings',
+    '--ignore-errors',
+    '--no-check-certificates',
     '--socket-timeout', '30',
-    '--extractor-args', 'youtube:player_client=android,web',
+    '--user-agent',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36',
+    '--extractor-args',
+    'youtube:player_client=web,android,ios'
   ];
 }
 
@@ -30,16 +35,16 @@ function run(args = []) {
     let out = '';
     let err = '';
 
-    child.stdout.on('data', d => out += d.toString());
-    child.stderr.on('data', d => err += d.toString());
+    child.stdout.on('data', d => (out += d.toString()));
+    child.stderr.on('data', d => (err += d.toString()));
 
     child.on('close', code => {
-      if (code === 0) return resolve(out);
-      reject(new ProviderError(err || 'yt-dlp failed'));
+      if (code === 0) return resolve(out.trim());
+      reject(new ProviderError(err || 'YouTube request failed'));
     });
 
     child.on('error', e => {
-      reject(new ProviderError(e.message));
+      reject(new ProviderError(e.message || 'yt-dlp failed'));
     });
   });
 }
@@ -48,7 +53,7 @@ const QUALITY_MAP = [
   {
     itag: '0',
     label: 'MP4 - Best Quality',
-    format: 'best',
+    format: 'bv*+ba/b',
     type: 'video',
     best: true
   },
@@ -62,22 +67,32 @@ const QUALITY_MAP = [
 ];
 
 async function getInfo(url) {
-  const raw = await run(['-J', url]);
-  const data = JSON.parse(raw);
+  try {
+    const raw = await run(['-J', url]);
+    const data = JSON.parse(raw);
 
-  return {
-    platform: 'youtube',
-    title: data.title || 'YouTube Video',
-    thumbnail: data.thumbnail || '',
-    duration: data.duration || 0,
-    channel: data.uploader || '',
-    views: data.view_count || 0,
-    formats: QUALITY_MAP
-  };
+    return {
+      platform: 'youtube',
+      title: data.title || 'YouTube Video',
+      thumbnail: data.thumbnail || '',
+      duration: data.duration || 0,
+      channel: data.uploader || '',
+      views: data.view_count || 0,
+      formats: QUALITY_MAP
+    };
+  } catch (err) {
+    throw new ProviderError(err.message || 'Unable to fetch video info');
+  }
 }
 
 async function getFormat(url, itag) {
-  return QUALITY_MAP.find(x => x.itag === String(itag));
+  const format = QUALITY_MAP.find(x => x.itag === String(itag));
+
+  if (!format) {
+    throw new ProviderError('Invalid format');
+  }
+
+  return format;
 }
 
 function createStream(url, format) {
@@ -87,13 +102,18 @@ function createStream(url, format) {
       ...baseArgs(),
       ...cookieArgs(),
       '--no-part',
-      '-f', format.format,
-      '-o', '-',
+      '--merge-output-format',
+      'mp4',
+      '-f',
+      format.format,
+      '-o',
+      '-',
       url
     ],
     { stdio: ['ignore', 'pipe', 'pipe'] }
   );
 
+  child.stderr.on('data', () => {});
   return child.stdout;
 }
 
