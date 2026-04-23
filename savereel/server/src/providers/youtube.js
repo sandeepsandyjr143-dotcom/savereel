@@ -12,7 +12,7 @@ function cookieArgs() {
 
 function baseArgs() {
   return [
-    '--extractor-args', 'youtube:player_client=android,web',
+    '--extractor-args', 'youtube:player_client=android',
     '--no-check-certificates',
     '--no-warnings',
     '--socket-timeout', '30',
