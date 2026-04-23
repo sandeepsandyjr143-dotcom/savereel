@@ -14,6 +14,7 @@ function baseArgs() {
   return [
     '--extractor-args', 'youtube:player_client=android',
     '--no-check-certificates',
+    '--no-check-formats',
     '--no-warnings',
     '--socket-timeout', '30',
     '--no-playlist',
@@ -64,11 +65,6 @@ function run(args = []) {
   });
 }
 
-/* ─────────────────────────────────────────────
-   Quality map — itag is our internal index
-   We check which formats actually exist in the
-   video before showing them to the user
-───────────────────────────────────────────── */
 const QUALITY_MAP = [
   {
     itag: '0',
@@ -126,15 +122,12 @@ async function getInfo(url) {
     const raw = await run(['-J', url]);
     const data = JSON.parse(raw);
 
-    // Get all heights available in this video
     const availableHeights = new Set(
       (data.formats || [])
         .map(f => f.height)
         .filter(h => h && h > 0)
     );
 
-    // Only show qualities that exist in this video
-    // Always show 360p, 144p, and audio as fallback
     const formats = QUALITY_MAP.filter(q => {
       if (q.type === 'audio') return true;
       if (q.height <= 360) return true;
@@ -155,16 +148,6 @@ async function getInfo(url) {
   }
 }
 
-/* ─────────────────────────────────────────────
-   createStream
-   
-   NOTE: 1080p and above uses bestvideo+bestaudio
-   which requires ffmpeg to merge on Render.
-   For 720p and below we use single-stream best[]
-   which pipes directly without ffmpeg.
-   
-   Render free tier HAS ffmpeg — this will work.
-───────────────────────────────────────────── */
 function createStream(url, format) {
   const args = [
     ...baseArgs(),
